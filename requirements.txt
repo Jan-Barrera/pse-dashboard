@@ -1,0 +1,9 @@
+streamlit
+pandas
+numpy
+requests
+sqlalchemy
+python-dotenv
+psycopg2-binary
+matplotlib
+mplfinance

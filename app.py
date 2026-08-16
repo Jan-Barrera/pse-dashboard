@@ -1,23 +1,10 @@
-import pandas as pd
 import streamlit as st
 
-from ui.dashboard import render_dashboard as _render_dashboard
-from ui.data import watchlist
+from ui.dashboard import render_dashboard
 from ui.sidebar import render_sidebar
 from ui.style import apply_global_styles
-
-
-def render_table(df: pd.DataFrame) -> None:
-    display_df = df.copy()
-    display_df["#"] = display_df["#"].astype(str) + " ⭐"
-    display_df["Trend"] = display_df["Trend"].map(
-        lambda value: f"📈 {value}" if value == "Uptrend" else "〰️ Sideways"
-    )
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-    )
+from component.swingtrade import render_swing_trade_watchlist
+from component.fibonacci import render_fibonacci_retracement
 
 
 st.set_page_config(
@@ -28,5 +15,11 @@ st.set_page_config(
 )
 
 apply_global_styles()
-render_sidebar()
-_render_dashboard()
+selected_page = render_sidebar()
+
+if selected_page == "Swing Trade Watchlist":
+    render_swing_trade_watchlist()
+elif selected_page == "Fibonacci Retracement":
+    render_fibonacci_retracement()
+else:
+    render_dashboard()

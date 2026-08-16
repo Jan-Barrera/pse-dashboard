@@ -23,7 +23,10 @@ def get_nav_items() -> list[tuple[str, str]]:
     ]
 
 
-def render_sidebar() -> None:
+def render_sidebar() -> str:
+    nav_items = get_nav_items()
+    nav_options = [f"{icon}  {label}" for icon, label in nav_items]
+
     with st.sidebar:
         st.markdown(
             """
@@ -35,11 +38,12 @@ def render_sidebar() -> None:
             unsafe_allow_html=True,
         )
 
-        st.radio(
+        selected = st.radio(
             "nav",
-            [f"{icon}  {label}" for icon, label in get_nav_items()],
+            nav_options,
             index=0,
             label_visibility="collapsed",
+            key="main_nav",
         )
 
         st.markdown("<hr style='border-color:#1c2333;margin:20px 0;'>", unsafe_allow_html=True)
@@ -65,3 +69,8 @@ def render_sidebar() -> None:
             """,
             unsafe_allow_html=True,
         )
+
+    for icon, label in nav_items:
+        if selected == f"{icon}  {label}":
+            return label
+    return nav_items[0][1]
