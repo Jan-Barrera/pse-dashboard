@@ -5,6 +5,7 @@ import pandas as pd
 import sqlalchemy as sa
 from dotenv import load_dotenv
 from config import LOOKBACK_DAYS
+import streamlit as st
 
 load_dotenv()
 
@@ -12,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL not found in .env")
+    DATABASE_URL = st.secrets["DATABASE_URL"]
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL not found in .env or streamlit secrets")
 
 engine = sa.create_engine(DATABASE_URL)
 
