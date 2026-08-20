@@ -5,6 +5,7 @@ from ui.sidebar import render_sidebar
 from ui.style import apply_global_styles
 from component.swingtrade import render_swing_trade_watchlist
 from component.fibonacci import render_fibonacci_retracement
+from component.breakout import render_breakout_watchlist
 
 
 st.set_page_config(
@@ -21,5 +22,7 @@ if selected_page == "Swing Trade Watchlist":
     render_swing_trade_watchlist()
 elif selected_page == "Fibonacci Retracement":
     render_fibonacci_retracement()
+elif selected_page == "Breakout Watchlist":
+    render_breakout_watchlist()
 else:
-    render_dashboard()
+    render_swing_trade_watchlist()

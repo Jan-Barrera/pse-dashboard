@@ -6,13 +6,11 @@ from model.scrape_data import (
     get_indices,
     get_indices_updated_at,
     get_market_breadth,
-    get_news,
     get_watchlist_data,
 )
 
 breadth = get_market_breadth()
 watchlist = get_watchlist_data()
-news = get_news()
 events = get_events()
 checklist_left = get_checklist_left()
 checklist_right = get_checklist_right()

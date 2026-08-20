@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 
 import matplotlib as mpl
 import matplotlib.dates as mdates
@@ -16,8 +17,6 @@ mpl.rcParams.update({
     "figure.titleweight": "bold",
 })
 logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
-
-logger = logging.getLogger(__name__)
 
 # Match ui/style.css dark palette
 _BG = "#0b0f19"
@@ -73,11 +72,17 @@ _FIB_RATIOS = {
 }
 
 
+@dataclass
+class FibonacciChart:
+    figure: plt.Figure
+    summary: list[str]
+
+
 def plot_fibonacci_retracement(
     symbol: str,
     df: pd.DataFrame,
     lookback_days: int = LOOKBACK_DAYS,
-) -> plt.Figure:
+) -> FibonacciChart:
     """Build a candlestick chart with Fibonacci retracement levels."""
     missing = [name for name in _REQUIRED_COLS if name not in df.columns]
     if missing:
@@ -182,27 +187,33 @@ def plot_fibonacci_retracement(
 
     axes[-1].xaxis.set_major_locator(mdates.AutoDateLocator(minticks=6, maxticks=10))
 
-    logger.info(
-        "Close: PhP%.2f  |  Swing: PhP%.2f → PhP%.2f (%s)",
-        latest_close,
-        swing_low,
-        swing_high,
-        direction,
-    )
-    if nearest_support:
-        logger.info(
-            "Nearest support:    %s at PhP%.2f",
-            nearest_support[0],
-            nearest_support[1],
-        )
-    if nearest_resistance:
-        logger.info(
-            "Nearest resistance: %s at PhP%.2f",
-            nearest_resistance[0],
-            nearest_resistance[1],
-        )
-    logger.info(
-        "Lines: green = support (below price), red = resistance (above price); thicker = nearest"
-    )
+    summary = [
+        (
+            f"Close: PhP {latest_close:,.2f}  |  "
+            f"Swing: PhP {swing_low:,.2f} → PhP {swing_high:,.2f} ({direction}) | "
+            f"Nearest support: {nearest_support[0]} at PhP {nearest_support[1]:,.2f} | "
+            f"Nearest resistance: {nearest_resistance[0]} at PhP{nearest_resistance[1]:,.2f}"
+        ),
+    ]
 
-    return fig
+    price_ax.set_title("")
+    fig.subplots_adjust(top=0.84)
+    fig.suptitle(
+        f"{symbol} - Fibonacci Retracement — {trend} ({lookback_days}d swing)",
+        color=_TEXT,
+        fontsize=14,
+        fontweight="bold",
+        y=0.98,
+    )
+    for index, line in enumerate(summary):
+        fig.text(
+            0.5,
+            0.935 - index * 0.028,
+            line,
+            ha="center",
+            va="top",
+            color=_TEXT_MUTED,
+            fontsize=9,
+        )
+
+    return FibonacciChart(figure=fig, summary=summary)

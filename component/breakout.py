@@ -1,40 +1,72 @@
 import matplotlib.pyplot as plt
 import streamlit as st
 
-from db.hist_data import get_hist_data
-from model.fibonacci import plot_fibonacci_retracement
+from model.breakout import create_breakout_plot
 from ui.dashboard import render_footer
 
+_ROW_HEIGHT = 35
+_HEADER_HEIGHT = 38
 
-def _render_fibonacci_chart(ticker: str, *, show_spinner: bool = False) -> bool:
+_SETUP_COLUMN_CONFIG = {
+    "Date": st.column_config.TextColumn("Date"),
+    "Type": st.column_config.TextColumn("Type"),
+    "Signal": st.column_config.TextColumn("Signal"),
+    "Close": st.column_config.TextColumn("Close"),
+    "Level": st.column_config.TextColumn("Level"),
+    "Note": st.column_config.TextColumn("Note"),
+}
+
+
+def _table_height(row_count: int) -> int:
+    return _HEADER_HEIGHT + max(row_count, 1) * _ROW_HEIGHT
+
+
+def _render_setup_table(title: str, df) -> None:
+    st.markdown(f"**{title}**")
+    if df.empty:
+        st.caption("No setups in the last 90 days.")
+        return
+    st.dataframe(
+        df,
+        width="stretch",
+        height=_table_height(len(df)),
+        row_height=_ROW_HEIGHT,
+        hide_index=True,
+        column_config=_SETUP_COLUMN_CONFIG,
+    )
+
+
+def _render_breakout_chart(ticker: str, *, show_spinner: bool = False) -> bool:
     try:
         if show_spinner:
-            with st.spinner(f"Loading {ticker} price data..."):
-                df = get_hist_data(ticker)
-                result = plot_fibonacci_retracement(ticker, df)
+            with st.spinner(f"Loading {ticker} breakout chart..."):
+                result = create_breakout_plot(ticker)
         else:
-            df = get_hist_data(ticker)
-            result = plot_fibonacci_retracement(ticker, df)
+            result = create_breakout_plot(ticker)
         st.pyplot(result.figure, width="stretch")
         plt.close(result.figure)
+        st.write("")
+        _render_setup_table("Confirmed breakouts (last 90 days)", result.breakouts)
+        st.write("")
+        _render_setup_table("Pre-breakout / pre-breakdown setups (last 90 days)", result.pre_breakouts)
         return True
     except Exception as exc:
-        st.error(f"Could not generate Fibonacci chart for {ticker}: {exc}")
+        st.error(f"Could not generate breakout chart for {ticker}: {exc}")
         return False
 
 
-def render_fibonacci_retracement() -> None:
+def render_breakout_watchlist() -> None:
     st.session_state.setdefault(
-        "fibonacci_symbol",
-        st.session_state.get("fibonacci_active_ticker", ""),
+        "breakout_symbol",
+        st.session_state.get("breakout_active_ticker", ""),
     )
-    active_ticker = st.session_state.get("fibonacci_active_ticker")
+    active_ticker = st.session_state.get("breakout_active_ticker")
 
     st.write("")
     st.markdown(
         """
-        <div class="section-title">📐 Fibonacci Retracement</div>
-        <div class="section-sub">Find potential support and resistance levels</div>
+        <div class="section-title">🐂 BREAKOUT WATCHLIST</div>
+        <div class="section-sub">Breakouts and pre-breakout setups</div>
         """,
         unsafe_allow_html=True,
     )
@@ -70,6 +102,9 @@ def render_fibonacci_retracement() -> None:
                 margin: 0;
                 box-sizing: border-box;
             }
+            [data-testid="stDataFrame"] > div {
+                overflow: hidden !important;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -81,7 +116,7 @@ def render_fibonacci_retracement() -> None:
         st.markdown("**Symbol:**")
 
     with form_col:
-        with st.form("fibonacci_form", clear_on_submit=False, border=False):
+        with st.form("breakout_form", clear_on_submit=False, border=False):
             input_col, button_col = st.columns([3, 1], vertical_alignment="center", gap="small")
             with input_col:
                 symbol = st.text_input(
@@ -89,20 +124,20 @@ def render_fibonacci_retracement() -> None:
                     label_visibility="collapsed",
                     placeholder="e.g. ALI",
                     max_chars=10,
-                    value=st.session_state.fibonacci_symbol,
+                    value=st.session_state.breakout_symbol,
                 )
             with button_col:
                 generate = st.form_submit_button("Generate", type="secondary", width="stretch")
 
     if generate:
-        st.session_state.fibonacci_symbol = symbol.strip().upper()
-        ticker = st.session_state.fibonacci_symbol
+        st.session_state.breakout_symbol = symbol.strip().upper()
+        ticker = st.session_state.breakout_symbol
         if not ticker:
             st.warning("Enter a stock symbol.")
-        elif _render_fibonacci_chart(ticker, show_spinner=True):
-            st.session_state.fibonacci_active_ticker = ticker
+        elif _render_breakout_chart(ticker, show_spinner=True):
+            st.session_state.breakout_active_ticker = ticker
     elif active_ticker:
-        _render_fibonacci_chart(active_ticker)
+        _render_breakout_chart(active_ticker)
 
     st.write("")
     render_footer()

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import html
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -9,10 +10,12 @@ from model.scrape_data import (
     SCRAPE_INTERVAL_SECONDS,
     get_indices,
     get_indices_updated_at,
+    get_market_news,
     indices_needs_refresh,
+    market_news_needs_refresh,
 )
 
-from .data import breadth, checklist_left, checklist_right, events, news, watchlist
+from .data import breadth, checklist_left, checklist_right, events, watchlist
 
 
 def render_header() -> None:
@@ -33,9 +36,6 @@ def render_header() -> None:
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:18px;padding-top:8px;">
                 <span style="color:#c7cce0;font-size:13px;">{date_label}</span>
                 <span class="market-status">● Market Closed</span>
-                <span class="pill">☆ Watchlist</span>
-                <span class="pill">🔔 Alerts <span style="background:#f0555e;color:white;border-radius:8px;padding:0 6px;font-size:11px;">3</span></span>
-                <span class="pill">⚙️</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -153,8 +153,48 @@ def render_watchlist_table(df: pd.DataFrame) -> None:
     )
 
 
+def _draw_market_news(news: list[tuple[str, str, str]]) -> None:
+    news_html = """<div class='card'><div style="display:flex;justify-content:space-between;align-items:center;">
+    <div class='section-title' style='font-size:15px;'>MARKET NEWS</div>
+    <div class='section-sub' style='font-size:12px;'>
+    <a href="https://www.pse.com.ph/press-room-archive/" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
+        PSE Press Room
+    </a>
+    </div>
+    </div><div style='margin-top:12px;'>"""
+    if news:
+        for date, headline, url in news:
+            if url:
+                headline_html = (
+                    f'<a href="{html.escape(url, quote=True)}" target="_blank" '
+                    f'rel="noopener noreferrer" style="color:#c7cce0;text-decoration:none;">'
+                    f"{html.escape(headline)}</a>"
+                )
+            else:
+                headline_html = html.escape(headline)
+            news_html += (
+                f"<div class='news-item' style='display: flex; gap: 15px;'>"
+                f"<span class='news-date' style='min-width: 120px; flex-shrink: 0;'>{html.escape(date)}</span>"
+                f"{headline_html}</div>"
+            )
+    else:
+        news_html += "<div class='news-item' style='color:#8b93a7;'>No market news available.</div>"
+    news_html += "</div></div>"
+    st.markdown(news_html, unsafe_allow_html=True)
+
+
+@st.fragment(run_every=timedelta(seconds=SCRAPE_INTERVAL_SECONDS))
+def render_market_news() -> None:
+    if market_news_needs_refresh():
+        with st.spinner("Loading market news from PSE..."):
+            with st.skeleton(height=220):
+                _draw_market_news(get_market_news())
+    else:
+        _draw_market_news(get_market_news())
+
+
 def render_bottom_panels() -> None:
-    b1, b2, b3 = st.columns(3)
+    b1, b2 = st.columns(2)
 
     with b1:
         checklist_html = "<div class='card'><div class='section-title' style='font-size:15px;'>SWING TRADING CHECKLIST</div><div style='margin-top:12px;display:flex;gap:24px;'>"
@@ -164,28 +204,7 @@ def render_bottom_panels() -> None:
         st.markdown(checklist_html, unsafe_allow_html=True)
 
     with b2:
-        events_html = "<div class='card'><div class='section-title' style='font-size:15px;'>UPCOMING EVENTS</div><div style='margin-top:12px;'>"
-        for date, tag, label in events:
-            tag_color = "#4ea8ff" if tag == "PH" else "#f0c14b"
-            events_html += f"""
-            <div class="event-row">
-                <span style="color:#8b93a7;width:60px;">{date}</span>
-                <span style="background:{tag_color}22;color:{tag_color};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;width:34px;text-align:center;">{tag}</span>
-                <span style="flex:1;margin-left:10px;">{label}</span>
-            </div>
-            """
-        events_html += "</div></div>"
-        st.markdown(events_html, unsafe_allow_html=True)
-
-    with b3:
-        news_html = """<div class='card'><div style="display:flex;justify-content:space-between;align-items:center;">
-        <div class='section-title' style='font-size:15px;'>MARKET NEWS</div>
-        <span style="color:#4ea8ff;font-size:12px;">View all news</span>
-        </div><div style='margin-top:12px;'>"""
-        for date, headline in news:
-            news_html += f"<div class='news-item'><span class='news-date'>{date}</span>{headline}</div>"
-        news_html += "</div></div>"
-        st.markdown(news_html, unsafe_allow_html=True)
+        render_market_news()
 
 
 def render_footer() -> None:
