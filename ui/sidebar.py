@@ -11,7 +11,7 @@ def get_nav_items() -> list[tuple[str, str]]:
         ("⭐", "Swing Trade Watchlist"),
         ("📐", "Fibonacci Retracement"),
         # ("🕯️", "Candlestick Patterns"),
-        ("🐂", "Breakout Watchlist"),
+        ("🐂", "Breakout Setup"),
         # ("📊", "Market Overview"),
         # ("🔎", "Stock Screener"),
         # ("⭐", "Watchlist"),

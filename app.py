@@ -22,7 +22,7 @@ if selected_page == "Swing Trade Watchlist":
     render_swing_trade_watchlist()
 elif selected_page == "Fibonacci Retracement":
     render_fibonacci_retracement()
-elif selected_page == "Breakout Watchlist":
+elif selected_page == "Breakout Setup":
     render_breakout_watchlist()
 else:
     render_swing_trade_watchlist()
