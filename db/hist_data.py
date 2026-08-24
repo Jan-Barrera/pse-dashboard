@@ -35,7 +35,42 @@ def clip_to_lookback(prices: pd.DataFrame, days: int = LOOKBACK_DAYS) -> pd.Data
     return prices[prices.index >= cutoff].copy()
 
 
-def load_cached(path: str) -> pd.DataFrame | None:
+def price_table_name(ticker: str) -> str:
+    return f"price_{ticker.strip().lower()}"
+
+
+def get_db_latest_trade_date(
+    db_engine: sa.Engine, ticker: str
+) -> datetime.date | None:
+    """Return max(trade_date) from Supabase for the ticker, or None if missing."""
+    table = price_table_name(ticker)
+    with db_engine.connect() as conn:
+        exists = conn.execute(
+            sa.text(
+                """
+                select 1
+                from information_schema.tables
+                where table_schema = 'public'
+                  and table_name = :table_name
+                """
+            ),
+            {"table_name": table},
+        ).scalar()
+        if not exists:
+            return None
+        latest = conn.execute(
+            sa.text(f'select max(trade_date) from "{table}"')
+        ).scalar()
+    if latest is None:
+        return None
+    if isinstance(latest, datetime.datetime):
+        return latest.date()
+    return latest
+
+
+def load_cached(
+    path: str, *, db_latest: datetime.date | None = None
+) -> pd.DataFrame | None:
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         return None
     try:
@@ -47,6 +82,26 @@ def load_cached(path: str) -> pd.DataFrame | None:
         return None
     cached = cached[~cached.index.duplicated(keep="last")].sort_index()
     last_date = cached.index.max().date()
+
+    if db_latest is not None:
+        if last_date >= db_latest:
+            cached = clip_to_lookback(cached)
+            logger.info(
+                "Using cached data through %s (db latest %s, %s rows, %sd): %s",
+                last_date,
+                db_latest,
+                len(cached),
+                LOOKBACK_DAYS,
+                path,
+            )
+            return cached
+        logger.info(
+            "Cached data ends %s (db latest %s); fetching newer data from Supabase...",
+            last_date,
+            db_latest,
+        )
+        return None
+
     expected = expected_latest_data_date()
     if last_date >= expected:
         cached = clip_to_lookback(cached)
@@ -68,7 +123,7 @@ def load_cached(path: str) -> pd.DataFrame | None:
 
 def load_price(db_engine: sa.Engine, ticker: str, days: int = LOOKBACK_DAYS) -> pd.DataFrame:
     """Load last `days` of OHLC from Supabase `price_{symbol}`."""
-    table = f"price_{ticker.lower()}"
+    table = price_table_name(ticker)
     with db_engine.connect() as conn:
         exists = conn.execute(
             sa.text(
@@ -118,9 +173,17 @@ def load_price(db_engine: sa.Engine, ticker: str, days: int = LOOKBACK_DAYS) -> 
     )
     return clip_to_lookback(prices, days)
 
+
 def get_hist_data(symbol: str) -> pd.DataFrame:
     csv_filename = f"./data/temp/{symbol}_data.csv"
-    df = load_cached(csv_filename)
+    db_latest = get_db_latest_trade_date(engine, symbol)
+    if db_latest is None:
+        raise ValueError(
+            f"No Supabase table found for {symbol!r} "
+            f"(expected {price_table_name(symbol)!r})"
+        )
+
+    df = load_cached(csv_filename, db_latest=db_latest)
     if df is None:
         df = load_price(engine, symbol)
         df.to_csv(csv_filename)
