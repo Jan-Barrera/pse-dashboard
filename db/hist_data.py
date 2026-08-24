@@ -22,14 +22,6 @@ engine = sa.create_engine(DATABASE_URL)
 os.makedirs("./data/temp", exist_ok=True)
 
 
-def expected_latest_data_date(today: datetime.date | None = None) -> datetime.date:
-    """Supabase prices lag by 1 session; expect data through the prior trading day."""
-    day = (today or datetime.date.today()) - datetime.timedelta(days=1)
-    while day.weekday() >= 5:  # Sat/Sun -> previous Friday
-        day -= datetime.timedelta(days=1)
-    return day
-
-
 def clip_to_lookback(prices: pd.DataFrame, days: int = LOOKBACK_DAYS) -> pd.DataFrame:
     cutoff = prices.index.max() - pd.Timedelta(days=days)
     return prices[prices.index >= cutoff].copy()
@@ -39,11 +31,8 @@ def price_table_name(ticker: str) -> str:
     return f"price_{ticker.strip().lower()}"
 
 
-def get_db_latest_trade_date(
-    db_engine: sa.Engine, ticker: str
-) -> datetime.date | None:
-    """Return max(trade_date) from Supabase for the ticker, or None if missing."""
-    table = price_table_name(ticker)
+def get_last_sync_date(db_engine: sa.Engine) -> datetime.date:
+    """Return the latest completed market-data synchronization date."""
     with db_engine.connect() as conn:
         exists = conn.execute(
             sa.text(
@@ -51,74 +40,73 @@ def get_db_latest_trade_date(
                 select 1
                 from information_schema.tables
                 where table_schema = 'public'
-                  and table_name = :table_name
+                  and table_name = 'last_sync_time'
                 """
-            ),
-            {"table_name": table},
+            )
         ).scalar()
         if not exists:
-            return None
+            raise ValueError("Supabase table 'last_sync_time' was not found")
         latest = conn.execute(
-            sa.text(f'select max(trade_date) from "{table}"')
+            sa.text("select max(last_sync_date) from last_sync_time")
         ).scalar()
     if latest is None:
-        return None
+        raise ValueError("Supabase table 'last_sync_time' has no sync date")
     if isinstance(latest, datetime.datetime):
         return latest.date()
     return latest
 
 
+def clear_cache(path: str) -> None:
+    """Delete a stale or invalid price cache."""
+    try:
+        os.remove(path)
+        logger.info("Cleared stale cache: %s", path)
+    except FileNotFoundError:
+        pass
+
+
 def load_cached(
-    path: str, *, db_latest: datetime.date | None = None
+    path: str, *, last_sync_date: datetime.date
 ) -> pd.DataFrame | None:
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
+    if not os.path.exists(path):
         return None
+    if os.path.getsize(path) == 0:
+        clear_cache(path)
+        return None
+
+    cache_date = datetime.date.fromtimestamp(os.path.getmtime(path))
+    if cache_date < last_sync_date:
+        logger.info(
+            "Cache was refreshed %s (last sync %s); clearing and downloading new data...",
+            cache_date,
+            last_sync_date,
+        )
+        clear_cache(path)
+        return None
+
     try:
         cached = pd.read_csv(path, parse_dates=["date"], index_col="date")
     except (pd.errors.EmptyDataError, ValueError, KeyError):
+        clear_cache(path)
         return None
     required = {"Open", "High", "Low", "Close", "Volume"}
     if cached.empty or not required.issubset(cached.columns):
+        clear_cache(path)
         return None
     cached = cached[~cached.index.duplicated(keep="last")].sort_index()
     last_date = cached.index.max().date()
 
-    if db_latest is not None:
-        if last_date >= db_latest:
-            cached = clip_to_lookback(cached)
-            logger.info(
-                "Using cached data through %s (db latest %s, %s rows, %sd): %s",
-                last_date,
-                db_latest,
-                len(cached),
-                LOOKBACK_DAYS,
-                path,
-            )
-            return cached
-        logger.info(
-            "Cached data ends %s (db latest %s); fetching newer data from Supabase...",
-            last_date,
-            db_latest,
-        )
-        return None
-
-    expected = expected_latest_data_date()
-    if last_date >= expected:
-        cached = clip_to_lookback(cached)
-        logger.info(
-            "Using cached data through %s (%s rows, %sd): %s",
-            last_date,
-            len(cached),
-            LOOKBACK_DAYS,
-            path,
-        )
-        return cached
+    cached = clip_to_lookback(cached)
     logger.info(
-        "Cached data ends %s (expected >= %s); fetching newer data from Supabase...",
+        "Using cache refreshed %s after sync %s (trades through %s, %s rows, %sd): %s",
+        cache_date,
+        last_sync_date,
         last_date,
-        expected,
+        len(cached),
+        LOOKBACK_DAYS,
+        path,
     )
-    return None
+    return cached
 
 
 def load_price(db_engine: sa.Engine, ticker: str, days: int = LOOKBACK_DAYS) -> pd.DataFrame:
@@ -175,20 +163,16 @@ def load_price(db_engine: sa.Engine, ticker: str, days: int = LOOKBACK_DAYS) -> 
 
 
 def get_hist_data(symbol: str) -> pd.DataFrame:
-    csv_filename = f"./data/temp/{symbol}_data.csv"
-    db_latest = get_db_latest_trade_date(engine, symbol)
-    if db_latest is None:
-        raise ValueError(
-            f"No Supabase table found for {symbol!r} "
-            f"(expected {price_table_name(symbol)!r})"
-        )
-
-    df = load_cached(csv_filename, db_latest=db_latest)
+    ticker = symbol.strip().upper()
+    csv_filename = f"./data/temp/{ticker}_data.csv"
+    last_sync_date = get_last_sync_date(engine)
+    df = load_cached(csv_filename, last_sync_date=last_sync_date)
     if df is None:
-        df = load_price(engine, symbol)
+        df = load_price(engine, ticker)
         df.to_csv(csv_filename)
         logger.info(
-            "Fetched and cached: %s (%s rows, %sd through %s)",
+            "Fetched and cached after sync %s: %s (%s rows, %sd through %s)",
+            last_sync_date,
             csv_filename,
             len(df),
             LOOKBACK_DAYS,
