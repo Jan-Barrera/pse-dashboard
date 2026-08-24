@@ -6,6 +6,12 @@ from model.fibonacci import plot_fibonacci_retracement
 from ui.dashboard import render_footer
 
 
+def _normalize_symbol(input_key: str) -> None:
+    """Uppercase the form symbol before the script body runs."""
+    raw = st.session_state.get(input_key, "")
+    st.session_state[input_key] = str(raw).strip().upper()
+
+
 def _render_fibonacci_chart(ticker: str, *, show_spinner: bool = False) -> bool:
     try:
         if show_spinner:
@@ -24,11 +30,8 @@ def _render_fibonacci_chart(ticker: str, *, show_spinner: bool = False) -> bool:
 
 
 def render_fibonacci_retracement() -> None:
-    st.session_state.setdefault(
-        "fibonacci_symbol",
-        st.session_state.get("fibonacci_active_ticker", ""),
-    )
-    active_ticker = st.session_state.get("fibonacci_active_ticker")
+    if "fibonacci_symbol" not in st.session_state:
+        st.session_state.fibonacci_symbol = st.session_state.get("fibonacci_active_ticker") or ""
 
     st.write("")
     st.markdown(
@@ -84,25 +87,30 @@ def render_fibonacci_retracement() -> None:
         with st.form("fibonacci_form", clear_on_submit=False, border=False):
             input_col, button_col = st.columns([3, 1], vertical_alignment="center", gap="small")
             with input_col:
-                symbol = st.text_input(
+                st.text_input(
                     "symbol",
                     label_visibility="collapsed",
                     placeholder="e.g. ALI",
                     max_chars=10,
-                    value=st.session_state.fibonacci_symbol,
+                    key="fibonacci_symbol",
                 )
             with button_col:
-                generate = st.form_submit_button("Generate", type="secondary", width="stretch")
+                generate = st.form_submit_button(
+                    "Generate",
+                    type="secondary",
+                    width="stretch",
+                    on_click=_normalize_symbol,
+                    args=("fibonacci_symbol",),
+                )
 
     if generate:
-        st.session_state.fibonacci_symbol = symbol.strip().upper()
-        ticker = st.session_state.fibonacci_symbol
+        ticker = str(st.session_state.get("fibonacci_symbol", "")).strip().upper()
         if not ticker:
             st.warning("Enter a stock symbol.")
         elif _render_fibonacci_chart(ticker, show_spinner=True):
             st.session_state.fibonacci_active_ticker = ticker
-    elif active_ticker:
-        _render_fibonacci_chart(active_ticker)
+    elif st.session_state.get("fibonacci_active_ticker"):
+        _render_fibonacci_chart(st.session_state.fibonacci_active_ticker)
 
     st.write("")
     render_footer()

@@ -21,6 +21,12 @@ def _table_height(row_count: int) -> int:
     return _HEADER_HEIGHT + max(row_count, 1) * _ROW_HEIGHT
 
 
+def _normalize_symbol(input_key: str) -> None:
+    """Uppercase the form symbol before the script body runs."""
+    raw = st.session_state.get(input_key, "")
+    st.session_state[input_key] = str(raw).strip().upper()
+
+
 def _render_setup_table(title: str, df) -> None:
     st.markdown(f"**{title}**")
     if df.empty:
@@ -56,11 +62,8 @@ def _render_breakout_chart(ticker: str, *, show_spinner: bool = False) -> bool:
 
 
 def render_breakout_watchlist() -> None:
-    st.session_state.setdefault(
-        "breakout_symbol",
-        st.session_state.get("breakout_active_ticker", ""),
-    )
-    active_ticker = st.session_state.get("breakout_active_ticker")
+    if "breakout_symbol" not in st.session_state:
+        st.session_state.breakout_symbol = st.session_state.get("breakout_active_ticker") or ""
 
     st.write("")
     st.markdown(
@@ -119,25 +122,30 @@ def render_breakout_watchlist() -> None:
         with st.form("breakout_form", clear_on_submit=False, border=False):
             input_col, button_col = st.columns([3, 1], vertical_alignment="center", gap="small")
             with input_col:
-                symbol = st.text_input(
+                st.text_input(
                     "symbol",
                     label_visibility="collapsed",
                     placeholder="e.g. ALI",
                     max_chars=10,
-                    value=st.session_state.breakout_symbol,
+                    key="breakout_symbol",
                 )
             with button_col:
-                generate = st.form_submit_button("Generate", type="secondary", width="stretch")
+                generate = st.form_submit_button(
+                    "Generate",
+                    type="secondary",
+                    width="stretch",
+                    on_click=_normalize_symbol,
+                    args=("breakout_symbol",),
+                )
 
     if generate:
-        st.session_state.breakout_symbol = symbol.strip().upper()
-        ticker = st.session_state.breakout_symbol
+        ticker = str(st.session_state.get("breakout_symbol", "")).strip().upper()
         if not ticker:
             st.warning("Enter a stock symbol.")
         elif _render_breakout_chart(ticker, show_spinner=True):
             st.session_state.breakout_active_ticker = ticker
-    elif active_ticker:
-        _render_breakout_chart(active_ticker)
+    elif st.session_state.get("breakout_active_ticker"):
+        _render_breakout_chart(st.session_state.breakout_active_ticker)
 
     st.write("")
     render_footer()

@@ -7,20 +7,10 @@ from .data import breadth
 
 def get_nav_items() -> list[tuple[str, str]]:
     return [
-        # ("📊", "Market Overview"),
         ("⭐", "Swing Trade Watchlist"),
+        ("🔭", "Pre-Breakout Watchlist"),
         ("📐", "Fibonacci Retracement"),
-        # ("🕯️", "Candlestick Patterns"),
         ("🐂", "Breakout Setup"),
-        # ("📊", "Market Overview"),
-        # ("🔎", "Stock Screener"),
-        # ("⭐", "Watchlist"),
-        # ("💡", "Swing Trade Ideas"),
-        # ("🔔", "Alerts"),
-        # ("📅", "Calendar"),
-        # ("📰", "News"),
-        # ("📘", "Learn"),
-        # ("📝", "My Notes"),
     ]
 
 
