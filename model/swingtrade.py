@@ -1,6 +1,5 @@
 import datetime
 import logging
-import os
 
 import pandas as pd
 import sqlalchemy as sa
@@ -9,11 +8,6 @@ from db.hist_data import engine
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = "./data/temp"
-os.makedirs(CACHE_DIR, exist_ok=True)
-CACHE_PATH = os.path.join(CACHE_DIR, "swingtrade_latest.csv")
-
-REQUIRED_COLUMNS = {"symbol", "date", "close", "support", "resistance"}
 WATCHLIST_COLUMNS = [
     "Symbol",
     "Company Name",
@@ -24,67 +18,72 @@ WATCHLIST_COLUMNS = [
 ]
 
 
-def expected_latest_data_date(today: datetime.date | None = None) -> datetime.date:
-    """Prices lag by 1 session; expect data through the prior trading day."""
-    day = (today or datetime.date.today()) - datetime.timedelta(days=1)
-    while day.weekday() >= 5:
-        day -= datetime.timedelta(days=1)
-    return day
+def fetch_swingtrade_dates(
+    db_engine: sa.Engine, limit: int = 10
+) -> list[datetime.date]:
+    """Return the latest `limit` distinct swingtrade dates, newest first."""
+    query = sa.text(
+        """
+        select distinct date
+        from swingtrade
+        order by date desc
+        limit :limit
+        """
+    )
+    with db_engine.connect() as conn:
+        rows = conn.execute(query, {"limit": limit}).scalars().all()
+    dates: list[datetime.date] = []
+    for row in rows:
+        if isinstance(row, datetime.datetime):
+            dates.append(row.date())
+        else:
+            dates.append(row)
+    if not dates:
+        raise ValueError("Supabase table swingtrade returned no dates")
+    return dates
 
 
-def load_cached_swingtrade(path: str = CACHE_PATH) -> pd.DataFrame | None:
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
-        return None
-    try:
-        cached = pd.read_csv(path, parse_dates=["date"])
-    except (pd.errors.EmptyDataError, ValueError, KeyError):
-        return None
-    if cached.empty or not REQUIRED_COLUMNS.issubset(cached.columns):
-        return None
-
-    last_date = pd.to_datetime(cached["date"]).max().date()
-    mtime_date = datetime.date.fromtimestamp(os.path.getmtime(path))
-    if last_date >= expected_latest_data_date() or mtime_date >= datetime.date.today():
-        logger.info(
-            "Using cached swingtrade through %s (%s rows): %s",
-            last_date,
-            len(cached),
-            path,
-        )
-        return cached
-
-    logger.info("Cached swingtrade ends %s; fetching latest from Supabase...", last_date)
-    return None
+def get_swingtrade_dates(limit: int = 10) -> list[datetime.date]:
+    """Return the latest swingtrade dates available in Supabase."""
+    return fetch_swingtrade_dates(engine, limit=limit)
 
 
 def fetch_latest_swingtrade(db_engine: sa.Engine) -> pd.DataFrame:
+    latest_date = fetch_swingtrade_dates(db_engine, limit=1)[0]
+    return fetch_swingtrade_for_date(db_engine, latest_date)
+
+
+def fetch_swingtrade_for_date(
+    db_engine: sa.Engine, trade_date: datetime.date
+) -> pd.DataFrame:
     query = sa.text(
         """
         select *
         from swingtrade
-        where date = (select max(date) from swingtrade)
+        where date = :trade_date
         order by symbol
         """
     )
-    df = pd.read_sql(query, db_engine, parse_dates=["date"])
+    df = pd.read_sql(
+        query,
+        db_engine,
+        params={"trade_date": trade_date},
+        parse_dates=["date"],
+    )
     if df.empty:
-        raise ValueError("Supabase table swingtrade returned no rows")
-    return df
-
-
-def get_swingtrade_dataframe() -> pd.DataFrame:
-    """Return the latest swingtrade rows from cache or Supabase."""
-    df = load_cached_swingtrade()
-    if df is None:
-        df = fetch_latest_swingtrade(engine)
-        df.to_csv(CACHE_PATH, index=False)
-        logger.info(
-            "Fetched and cached: %s (%s rows through %s)",
-            CACHE_PATH,
-            len(df),
-            df["date"].max().date(),
+        raise ValueError(
+            f"Supabase table swingtrade returned no rows for {trade_date}"
         )
     return df
+
+
+def get_swingtrade_dataframe(
+    trade_date: datetime.date | None = None,
+) -> pd.DataFrame:
+    """Return swingtrade rows for `trade_date`, or the latest date when omitted."""
+    if trade_date is None:
+        return fetch_latest_swingtrade(engine)
+    return fetch_swingtrade_for_date(engine, trade_date)
 
 
 def fetch_company_names(db_engine: sa.Engine, symbols: list[str]) -> dict[str, str]:
@@ -105,9 +104,11 @@ def format_peso(value: float) -> str:
     return f"₱{value:,.2f}"
 
 
-def get_swing_trade_watchlist() -> pd.DataFrame:
+def get_swing_trade_watchlist(
+    trade_date: datetime.date | None = None,
+) -> pd.DataFrame:
     """Return swing trade watchlist formatted for the UI table."""
-    df = get_swingtrade_dataframe()
+    df = get_swingtrade_dataframe(trade_date)
     if df.empty:
         return pd.DataFrame(columns=WATCHLIST_COLUMNS)
 
@@ -115,10 +116,10 @@ def get_swing_trade_watchlist() -> pd.DataFrame:
     rows = []
     for _, row in df.iterrows():
         symbol = row["symbol"]
-        trade_date = row["date"]
+        row_date = row["date"]
         date_label = (
-            pd.Timestamp(trade_date).strftime("%Y-%m-%d")
-            if pd.notna(trade_date)
+            pd.Timestamp(row_date).strftime("%Y-%m-%d")
+            if pd.notna(row_date)
             else ""
         )
         rows.append(
