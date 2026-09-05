@@ -92,7 +92,7 @@ def fetch_company_names(db_engine: sa.Engine, symbols: list[str]) -> dict[str, s
         for symbol in symbols:
             table = f"price_{symbol.lower()}"
             name = conn.execute(
-                sa.text(f'select company from "{table}" where company is not null limit 1')
+                sa.text(f'select name from "{table}" where name is not null limit 1')
             ).scalar()
             names[symbol] = name or ""
     return names

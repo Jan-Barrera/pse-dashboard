@@ -11,11 +11,11 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DB_URL")
 if not DATABASE_URL:
-    DATABASE_URL = st.secrets["DATABASE_URL"]
+    DATABASE_URL = st.secrets["DB_URL"]
     if not DATABASE_URL:
-        raise ValueError("DATABASE_URL not found in .env or streamlit secrets")
+        raise ValueError("DB_URL not found in .env or streamlit secrets")
 
 engine = sa.create_engine(DATABASE_URL)
 
