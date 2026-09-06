@@ -39,7 +39,7 @@ def fetch_swingtrade_dates(
         else:
             dates.append(row)
     if not dates:
-        raise ValueError("Supabase table swingtrade returned no dates")
+        raise ValueError("Data for swingtrade returned no dates")
     return dates
 
 
@@ -72,7 +72,7 @@ def fetch_swingtrade_for_date(
     )
     if df.empty:
         raise ValueError(
-            f"Supabase table swingtrade returned no rows for {trade_date}"
+            f"Data for swingtrade returned no rows for {trade_date}"
         )
     return df
 

@@ -41,7 +41,7 @@ def fetch_prebreakout_dates(
         else:
             dates.append(row)
     if not dates:
-        raise ValueError("Supabase table prebreakout_results returned no dates")
+        raise ValueError("Data for prebreakout results returned no dates")
     return dates
 
 
@@ -74,7 +74,7 @@ def fetch_prebreakout_for_date(
     )
     if df.empty:
         raise ValueError(
-            f"Supabase table prebreakout_results returned no rows for {trade_date}"
+            f"Data for prebreakout returned no rows for {trade_date}"
         )
     return df
 

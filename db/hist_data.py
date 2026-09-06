@@ -125,7 +125,7 @@ def load_price(db_engine: sa.Engine, ticker: str, days: int = LOOKBACK_DAYS) -> 
             {"table_name": table},
         ).scalar()
     if not exists:
-        raise ValueError(f"No Supabase table found for {ticker!r} (expected {table!r})")
+        raise ValueError(f"No data found for {ticker!r} (expected {table!r})")
 
     prices = pd.read_sql(
         sa.text(
@@ -151,7 +151,7 @@ def load_price(db_engine: sa.Engine, ticker: str, days: int = LOOKBACK_DAYS) -> 
     prices = prices.dropna(subset=["Open", "High", "Low", "Close"])
     prices = prices[~prices.index.duplicated(keep="last")].sort_index()
     if prices.empty:
-        raise ValueError(f"Supabase table {table!r} returned no usable OHLC rows")
+        raise ValueError(f"Data for {table!r} returned no usable OHLC rows")
 
     prices["Volume"] = prices["Volume"].fillna(0.0).clip(lower=0.0)
     return clip_to_lookback(prices, days)
@@ -163,7 +163,7 @@ def get_hist_data(symbol: str) -> pd.DataFrame:
     db_latest = get_db_latest_trade_date(engine, ticker)
     if db_latest is None:
         raise ValueError(
-            f"No Supabase table found for {ticker!r} "
+            f"No data found for {ticker!r} "
             f"(expected {price_table_name(ticker)!r})"
         )
 
