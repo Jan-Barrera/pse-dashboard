@@ -4,6 +4,6 @@ numpy
 requests
 sqlalchemy
 python-dotenv
-psycopg2-binary
+psycopg[binary]>=3.1.0
 matplotlib
 mplfinance

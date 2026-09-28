@@ -17,7 +17,19 @@ if not DATABASE_URL:
     if not DATABASE_URL:
         raise ValueError("DB_URL not found in .env or streamlit secrets")
 
-engine = sa.create_engine(DATABASE_URL)
+
+def normalize_database_url(url: str) -> str:
+    """Ensure SQLAlchemy uses the installed psycopg v3 driver."""
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    if url.startswith("postgresql+psycopg2://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql+psycopg2://")
+    return url
+
+
+engine = sa.create_engine(normalize_database_url(DATABASE_URL))
 
 os.makedirs("./data/temp", exist_ok=True)
 
